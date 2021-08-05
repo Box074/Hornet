@@ -18,6 +18,11 @@ namespace Hornet
         GameObject HC2 = null;
         GameObject needle = null;
         DefaultActions defaultActions = null;
+
+        void Update()
+        {
+            
+        }
         void OnCollisionEnter2D(Collision2D collision) => OnCollisionStay2D(collision);
         void OnCollisionStay2D(Collision2D collision)
         {
@@ -96,7 +101,7 @@ namespace Hornet
                 TranAttach.InvokeWithout("DASH"),
                 TranAttach.InvokeWithout("THROW")
                 );
-            TranAttach.InvokeActionOn("FALL", defaultActions.FallTest);
+            TranAttach.InvokeActionOn("JUMP", defaultActions.FallTest);
 
             TranAttach.RegisterAction("STOP", defaultActions.Stop,
                 TranAttach.InvokeWithout("STOP"),
@@ -262,26 +267,68 @@ namespace Hornet
             On.HeroController.TakeDamage -= _NoDamage;
             On.HeroController.TakeDamage += _NoDamage;
             animator.Play("G Dash");
+            rig.SetVX(0);
             rig.SetVY(0);
-            if (TranAttach.IsActionInvoking("THROW"))
+            float speed = HeroController.instance.DASH_SPEED;
+            if (TranAttach.IsActionInvoking("THROW") && needle.activeSelf)
             {
                 needle.SetActive(false);
                 rig.rotation = Vector2.Angle(transform.position, needle.transform.position);
                 iTween.MoveTo(gameObject, needle.transform.position + new Vector3(0, 0.5f), 0.75f);
+                foreach (var v in Physics2D.LinecastAll(transform.position, needle.transform.position))
+                {
+                    HealthManager hm = v.collider.gameObject.GetComponent<HealthManager>();
+                    FSMUtility.SendEventToGameObject(v.collider.gameObject, "TOOK DAMAGE");
+                    FSMUtility.SendEventToGameObject(v.collider.gameObject, "TAKE DAMAGE");
+                    FSMUtility.SendEventToGameObject(v.collider.gameObject, "HIT");
+                    if (hm != null)
+                    {
+                        hm.Hit(new HitInstance()
+                        {
+                            AttackType = AttackTypes.SharpShadow,
+                            Source = gameObject,
+                            DamageDealt = PlayerData.instance.nailDamage,
+                            Multiplier = 1,
+                            MagnitudeMultiplier = 1,
+                            CircleDirection = true,
+                            IgnoreInvulnerable = false
+                        });
+
+
+                    }
+                }
                 yield return new WaitForSeconds(0.65f);
                 animator.Play("Idle");
             }
             else
             {
-                rig.SetVX(HeroController.instance.cState.facingRight ?
-                    HeroController.instance.DASH_SPEED :
-                    -HeroController.instance.DASH_SPEED);
+                if (DefaultActions.LeftTest())
+                {
+                    rig.SetVX(-speed);
+                }
+                else if (DefaultActions.RightTest())
+                {
+                    rig.SetVX(speed);
+                }
+                else
+                {
+                    rig.SetVX(HeroController.instance.cState.facingRight ?
+                         speed :
+                        -speed);
+                }
+                if (DefaultActions.DownTest())
+                {
+                    rig.SetVY(-40);
+                }
                 yield return new WaitForSeconds(0.5f);
                 rig.SetVX(0);
-
-
-                yield return animator.PlayAnimWait("G Dash Recover1");
-                yield return animator.PlayAnimWait("G Dash Recover2");
+                
+                if (rig.velocity.y > -0.1f)
+                {
+                    rig.SetVY(0);
+                    yield return animator.PlayAnimWait("G Dash Recover1");
+                    yield return animator.PlayAnimWait("G Dash Recover2");
+                }
             }
             rig.rotation = 0;
             rig.gravityScale = 1;
@@ -343,9 +390,9 @@ namespace Hornet
         {
             CancelThrow();
             CancelCounter();
-            yield return null;
+
             rig.velocity = new Vector2(0, 25);
-            Modding.Logger.Log("V: " + rig.velocity.y.ToString());
+            //Modding.Logger.Log("V: " + rig.velocity.y.ToString());
             animator.Play("Jump");
             
             yield return new WaitForSeconds(0.25f);

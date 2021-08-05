@@ -18,7 +18,27 @@ namespace Hornet
         GameObject HC2 = null;
         GameObject needle = null;
         DefaultActions defaultActions = null;
-
+        void HitEnemy(GameObject go)
+        {
+            HealthManager hm = go.GetComponent<HealthManager>();
+            FSMUtility.SendEventToGameObject(go, "TOOK DAMAGE");
+            FSMUtility.SendEventToGameObject(go, "HIT");
+            FSMUtility.SendEventToGameObject(go, "TAKE DAMAGE");
+            if (hm != null)
+            {
+                hm.Hit(new HitInstance()
+                {
+                    AttackType = AttackTypes.Nail,
+                    Source = gameObject,
+                    DamageDealt = PlayerData.instance.nailDamage,
+                    Multiplier = 1,
+                    MagnitudeMultiplier = 1,
+                    CircleDirection = true,
+                    IgnoreInvulnerable = false
+                });
+            }
+            
+        }
         void Update()
         {
             
@@ -26,25 +46,13 @@ namespace Hornet
         void OnCollisionEnter2D(Collision2D collision) => OnCollisionStay2D(collision);
         void OnCollisionStay2D(Collision2D collision)
         {
-            HealthManager hm = collision.gameObject.GetComponent<HealthManager>() ??
+            HealthManager hm = collision.collider.gameObject.GetComponent<HealthManager>() ??
                 collision.otherCollider.GetComponent<HealthManager>();
             if (hm != null)
             {
-                if (TranAttach.IsActionInvoking("DASH") || TranAttach.IsActionInvoking("DSTAB"))
+                if (TranAttach.IsActionInvoking("DASH"))
                 {
-
-                    hm.Hit(new HitInstance()
-                    {
-                        AttackType = AttackTypes.SharpShadow,
-                        Source = gameObject,
-                        DamageDealt = PlayerData.instance.nailDamage,
-                        Multiplier = 1,
-                        MagnitudeMultiplier = 1,
-                        CircleDirection = true,
-                        IgnoreInvulnerable = false
-                    });
-                    FSMUtility.SendEventToGameObject(hm.gameObject, "TOOK DAMAGE");
-                    FSMUtility.SendEventToGameObject(hm.gameObject, "TAKE DAMAGE");
+                    HitEnemy(hm.gameObject);
                 }
             }
         }
@@ -58,7 +66,7 @@ namespace Hornet
             HC2 = control.FsmVariables.FindFsmGameObject("Hit Counter 2").Value.TranHeroAttack(
                 AttackTypes.Nail, 15);
 
-            needle = transform.Find("Needle").gameObject.Clone().TranHeroAttack(AttackTypes.Nail, 4)
+            needle = transform.Find("Needle").gameObject.Clone().TranHeroAttack(AttackTypes.Nail, 1)
                 .SetParent(null);
             DontDestroyOnLoad(needle);
             needle.LocateMyFSM("Control").InsertMethod("Notify", 0, () =>
@@ -92,7 +100,7 @@ namespace Hornet
                 TranAttach.InvokeWithout("DASH"),
                 TranAttach.InvokeWithout("SPHERE")
                 );
-            TranAttach.InvokeActionOn("FALL", DefaultActions.JumpTest);
+            TranAttach.InvokeActionOn("JUMP", DefaultActions.JumpTest);
 
             TranAttach.RegisterAction("FALL", defaultActions.Fall,
                 TranAttach.InvokeWithout("DSTAB"),
@@ -101,7 +109,7 @@ namespace Hornet
                 TranAttach.InvokeWithout("DASH"),
                 TranAttach.InvokeWithout("THROW")
                 );
-            TranAttach.InvokeActionOn("JUMP", defaultActions.FallTest);
+            TranAttach.InvokeActionOn("FALL", defaultActions.FallTest);
 
             TranAttach.RegisterAction("STOP", defaultActions.Stop,
                 TranAttach.InvokeWithout("STOP"),
@@ -154,7 +162,6 @@ namespace Hornet
                 ));
 
             TranAttach.RegisterAction("C", Counter,
-                TranAttach.InvokeWithout("DSTAB"),
                 TranAttach.InvokeWithout("SPHERE"),
                 TranAttach.InvokeWithout("DASH"),
                 TranAttach.InvokeWithout("JUMP"),
@@ -167,15 +174,19 @@ namespace Hornet
             TranAttach.InvokeActionOn("C", DefaultActions.AttackTest);
 
             TranAttach.RegisterAction("ATTACK", Attack,
-                TranAttach.InvokeWithout("DSTAB"),
                 TranAttach.InvokeWithout("SPHERE"),
                 TranAttach.InvokeWithout("DASH"),
-                TranAttach.InvokeWithout("JUMP"),
-                TranAttach.InvokeWithout("FALL"),
                 TranAttach.InvokeWithout("RUN"),
                 TranAttach.InvokeWithout("THROW"),
-                TranAttach.InvokeWith("C"),
                 TranAttach.InvokeWithout("ATTACK"));
+            TranAttach.InvokeActionOn("ATTACK", TranAttach.And(
+                TranAttach.Or(
+                    TranAttach.InvokeWith("JUMP"),
+                    TranAttach.InvokeWith("FALL")
+                    ),
+                TranAttach.InvokeWithout("C"),
+                DefaultActions.AttackTest
+                ));
 
             TranAttach.RegisterAction("IDLE", defaultActions.Idle,
                 TranAttach.InvokeWithout("IDLE"),
@@ -208,6 +219,12 @@ namespace Hornet
             On.HeroController.CanFocus += HeroController_CanFocus;
             On.HeroController.CanQuickMap += HeroController_CanQuickMap;
             On.HeroController.CanNailCharge += HeroController_CanNailCharge;
+            On.HeroController.CanDash += HeroController_CanDash;
+        }
+
+        private bool HeroController_CanDash(On.HeroController.orig_CanDash orig, HeroController self)
+        {
+            return false;
         }
 
         private bool HeroController_CanNailCharge(On.HeroController.orig_CanNailCharge orig, HeroController self)
@@ -239,6 +256,7 @@ namespace Hornet
             On.HeroController.CanFocus -= HeroController_CanFocus;
             On.HeroController.CanQuickMap -= HeroController_CanQuickMap;
             On.HeroController.CanNailCharge -= HeroController_CanNailCharge;
+            On.HeroController.CanDash -= HeroController_CanDash;
 
             On.HeroController.TakeDamage -= _NoDamage;
         }
@@ -270,45 +288,49 @@ namespace Hornet
             rig.SetVX(0);
             rig.SetVY(0);
             float speed = HeroController.instance.DASH_SPEED;
-            if (TranAttach.IsActionInvoking("THROW") && needle.activeSelf)
+            if (TranAttach.IsActionInvoking("THROW") && needle.activeSelf) //TODO
             {
+                Vector2 ov = transform.position;
                 needle.SetActive(false);
                 rig.rotation = Vector2.Angle(transform.position, needle.transform.position);
-                iTween.MoveTo(gameObject, needle.transform.position + new Vector3(0, 0.5f), 0.75f);
-                foreach (var v in Physics2D.LinecastAll(transform.position, needle.transform.position))
+                rig.velocity = needle.transform.position - transform.position;
+                
+                for (int i = 0; i < 5; i++)
                 {
-                    HealthManager hm = v.collider.gameObject.GetComponent<HealthManager>();
-                    FSMUtility.SendEventToGameObject(v.collider.gameObject, "TOOK DAMAGE");
-                    FSMUtility.SendEventToGameObject(v.collider.gameObject, "TAKE DAMAGE");
-                    FSMUtility.SendEventToGameObject(v.collider.gameObject, "HIT");
-                    if (hm != null)
+                    foreach (var v in Physics2D.LinecastAll(ov, transform.position, Physics2D.AllLayers))
                     {
-                        hm.Hit(new HitInstance()
-                        {
-                            AttackType = AttackTypes.SharpShadow,
-                            Source = gameObject,
-                            DamageDealt = PlayerData.instance.nailDamage,
-                            Multiplier = 1,
-                            MagnitudeMultiplier = 1,
-                            CircleDirection = true,
-                            IgnoreInvulnerable = false
-                        });
-
-
+                        HitEnemy(v.collider.gameObject);
                     }
+                    if (rig.velocity == Vector2.zero || (
+                        ((transform.position.x >= needle.transform.position.x - 0.5f) ||
+                        (transform.position.x <= needle.transform.position.x +0.5f))
+                        &&
+                        ((transform.position.y >= needle.transform.position.y - 0.5f) ||
+                        (transform.position.y <= needle.transform.position.y + 0.5f))
+                        )
+                        ) break;
+                    ov = transform.position;
+                    rig.velocity = needle.transform.position - transform.position;
+                    yield return new WaitForSeconds(0.1f);
                 }
-                yield return new WaitForSeconds(0.65f);
                 animator.Play("Idle");
             }
             else
             {
+                bool left = false;
+                bool right = false;
+                Vector2 oldV = transform.position;
                 if (DefaultActions.LeftTest())
                 {
+                    HeroController.instance.FaceLeft();
                     rig.SetVX(-speed);
+                    left = true;
                 }
                 else if (DefaultActions.RightTest())
                 {
+                    HeroController.instance.FaceRight();
                     rig.SetVX(speed);
+                    right = true;
                 }
                 else
                 {
@@ -318,17 +340,46 @@ namespace Hornet
                 }
                 if (DefaultActions.DownTest())
                 {
-                    rig.SetVY(-40);
+                    rig.SetVY(-50);
+                    if (left)
+                    {
+                        rig.rotation = 45;
+                    }
+                    else if (right)
+                    {
+                        rig.rotation = -45;
+                    }
+                    else
+                    {
+                        if (HeroController.instance.cState.facingRight)
+                        {
+                            rig.rotation = -90;
+                        }
+                        else
+                        {
+                            rig.rotation = 90;
+                        }
+                    }
                 }
-                yield return new WaitForSeconds(0.5f);
+                for (int i = 0; i < 5; i++)
+                {
+                    yield return new WaitForSeconds(0.1f);
+                    
+                    foreach (var v in Physics2D.LinecastAll(oldV, transform.position, Physics2D.AllLayers))
+                    {
+                        HitEnemy(v.collider.gameObject);
+                    }
+                    oldV = transform.position;
+                }
                 rig.SetVX(0);
-                
                 if (rig.velocity.y > -0.1f)
                 {
                     rig.SetVY(0);
                     yield return animator.PlayAnimWait("G Dash Recover1");
                     yield return animator.PlayAnimWait("G Dash Recover2");
+                    animator.Play("Idle");
                 }
+                rig.SetVY(0);
             }
             rig.rotation = 0;
             rig.gravityScale = 1;
@@ -362,6 +413,10 @@ namespace Hornet
 
         IEnumerator Attack()
         {
+            CancelThrow();
+            CancelCounter();
+            defaultActions.CancelFall();
+
             HC1.GetComponent<DamageEnemies>().damageDealt = PlayerData.instance.nailDamage;
             HC2.GetComponent<DamageEnemies>().damageDealt = PlayerData.instance.nailDamage;
 
@@ -392,7 +447,6 @@ namespace Hornet
             CancelCounter();
 
             rig.velocity = new Vector2(0, 25);
-            //Modding.Logger.Log("V: " + rig.velocity.y.ToString());
             animator.Play("Jump");
             
             yield return new WaitForSeconds(0.25f);
@@ -406,6 +460,7 @@ namespace Hornet
         IEnumerator Throw()
         {
             isThrow = true;
+            defaultActions.CancelFall();
             rig.gravityScale = 0;
             yield return animator.PlayAnimWait("Throw Antic Q");
             rig.gravityScale = 1;
@@ -438,7 +493,8 @@ namespace Hornet
             while (isThrow && needle.activeSelf) yield return null;
             if (needle.activeSelf)
             {
-                animator.Play("Throw Recover");
+                yield return animator.PlayAnimWait("Throw Recover");
+                animator.Play("Idle");
             }
             needle.SetActive(false);
         }

@@ -18,34 +18,9 @@ namespace Hornet
         GameObject HC2 = null;
         GameObject needle = null;
         DefaultActions defaultActions = null;
-        BoxCollider2D boxCollider = null;
-        void HitEnemy(GameObject go)
-        {
-            HealthManager hm = go.GetComponent<HealthManager>();
-            FSMUtility.SendEventToGameObject(go, "TOOK DAMAGE");
-            FSMUtility.SendEventToGameObject(go, "HIT");
-            FSMUtility.SendEventToGameObject(go, "TAKE DAMAGE");
-            if (hm != null)
-            {
-                hm.Hit(new HitInstance()
-                {
-                    AttackType = AttackTypes.Nail,
-                    Source = gameObject,
-                    DamageDealt = PlayerData.instance.nailDamage,
-                    Multiplier = 1,
-                    MagnitudeMultiplier = 1,
-                    CircleDirection = true,
-                    IgnoreInvulnerable = false
-                });
-            }
-            
-        }
+
         void Update()
         {
-            boxCollider.enabled = true;
-            boxCollider.isTrigger = true;
-            boxCollider.offset = GetComponent<BoxCollider2D>().offset;
-            boxCollider.size = GetComponent<BoxCollider2D>().size;
         }
         
         void Awake()
@@ -53,10 +28,10 @@ namespace Hornet
             PlayMakerFSM control = gameObject.LocateMyFSM("Control");
             SphereG = control.FsmVariables.FindFsmGameObject("Sphere Ball").Value;
             SphereG.TranHeroAttack(AttackTypes.Spell, 1);
-            HC1 = control.FsmVariables.FindFsmGameObject("Hit Counter 1").Value.TranHeroAttack(
-                AttackTypes.Nail, 15);
-            HC2 = control.FsmVariables.FindFsmGameObject("Hit Counter 2").Value.TranHeroAttack(
-                AttackTypes.Nail, 15);
+            HC1 = control.FsmVariables.FindFsmGameObject("Hit Counter 1").Value.TranHeroAttack(AttackTypes.Nail, 15);
+            HC2 = control.FsmVariables.FindFsmGameObject("Hit Counter 2").Value.TranHeroAttack(AttackTypes.Nail, 15);
+            HC1.AddComponent<SlashDamage>();
+            HC2.AddComponent<SlashDamage>();
 
             needle = transform.Find("Needle").gameObject.Clone().TranHeroAttack(AttackTypes.Nail, 1)
                 .SetParent(null);
@@ -69,19 +44,6 @@ namespace Hornet
             needle.name = "HornetAttackN";
             needle.SetActive(false);
             foreach (var v in GetComponents<PlayMakerFSM>()) Destroy(v);
-
-            GameObject box = new GameObject("Hero Box");
-            box.layer = (int)GlobalEnums.PhysLayers.HERO_BOX;
-            box.transform.parent = transform;
-            box.transform.localPosition = Vector3.zero;
-            boxCollider = box.AddComponent<BoxCollider2D>();
-            boxCollider.enabled = true;
-            boxCollider.isTrigger = true;
-            boxCollider.offset = GetComponent<BoxCollider2D>().offset;
-            boxCollider.size = GetComponent<BoxCollider2D>().size;
-
-            box.AddComponent<HeroBox>();
-
 
             animator = GetComponent<tk2dSpriteAnimator>();
             rig = GetComponent<Rigidbody2D>();
@@ -191,6 +153,7 @@ namespace Hornet
                 TranAttach.Or(
                     TranAttach.InvokeWith("JUMP"),
                     TranAttach.InvokeWith("FALL")
+                    
                     ),
                 TranAttach.InvokeWithout("C"),
                 DefaultActions.AttackTest

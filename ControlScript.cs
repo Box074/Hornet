@@ -18,6 +18,7 @@ namespace Hornet
         GameObject HC2 = null;
         GameObject needle = null;
         DefaultActions defaultActions = null;
+        BoxCollider2D boxCollider = null;
         void HitEnemy(GameObject go)
         {
             HealthManager hm = go.GetComponent<HealthManager>();
@@ -41,21 +42,12 @@ namespace Hornet
         }
         void Update()
         {
-            
+            boxCollider.enabled = true;
+            boxCollider.isTrigger = true;
+            boxCollider.offset = GetComponent<BoxCollider2D>().offset;
+            boxCollider.size = GetComponent<BoxCollider2D>().size;
         }
-        void OnCollisionEnter2D(Collision2D collision) => OnCollisionStay2D(collision);
-        void OnCollisionStay2D(Collision2D collision)
-        {
-            HealthManager hm = collision.collider.gameObject.GetComponent<HealthManager>() ??
-                collision.otherCollider.GetComponent<HealthManager>();
-            if (hm != null)
-            {
-                if (TranAttach.IsActionInvoking("DASH"))
-                {
-                    HitEnemy(hm.gameObject);
-                }
-            }
-        }
+        
         void Awake()
         {
             PlayMakerFSM control = gameObject.LocateMyFSM("Control");
@@ -77,6 +69,18 @@ namespace Hornet
             needle.name = "HornetAttackN";
             needle.SetActive(false);
             foreach (var v in GetComponents<PlayMakerFSM>()) Destroy(v);
+
+            GameObject box = new GameObject("Hero Box");
+            box.layer = (int)GlobalEnums.PhysLayers.HERO_BOX;
+            box.transform.parent = transform;
+            box.transform.localPosition = Vector3.zero;
+            boxCollider = box.AddComponent<BoxCollider2D>();
+            boxCollider.enabled = true;
+            boxCollider.isTrigger = true;
+            boxCollider.offset = GetComponent<BoxCollider2D>().offset;
+            boxCollider.size = GetComponent<BoxCollider2D>().size;
+
+            box.AddComponent<HeroBox>();
 
 
             animator = GetComponent<tk2dSpriteAnimator>();
@@ -141,15 +145,19 @@ namespace Hornet
                 );
             TranAttach.InvokeActionOn("SPHERE", TranAttach.And(
                 DefaultActions.CastDownTest,
-                DefaultActions.DownTest
+                TranAttach.Or(
+                    DefaultActions.DownTest,
+                    TranAttach.InvokeWith("JUMP"),
+                    TranAttach.InvokeWith("FALL")
+                )
                 ));
             TranAttach.RegisterAction("THROW", Throw,
                 TranAttach.InvokeWithout("THROW"),
                 TranAttach.InvokeWithout("DSTAB"),
                 TranAttach.InvokeWithout("SPHERE"),
-                TranAttach.InvokeWithout("DASH")
-                //TranAttach.InvokeWithout("JUMP"),
-                //TranAttach.InvokeWithout("FALL"),
+                TranAttach.InvokeWithout("DASH"),
+                TranAttach.InvokeWithout("JUMP"),
+                TranAttach.InvokeWithout("FALL")
                 //TranAttach.InvokeWithout("RUN")
                 );
             TranAttach.InvokeActionOn("THROW", TranAttach.And(
@@ -288,99 +296,62 @@ namespace Hornet
             rig.SetVX(0);
             rig.SetVY(0);
             float speed = HeroController.instance.DASH_SPEED;
-            if (TranAttach.IsActionInvoking("THROW") && needle.activeSelf) //TODO
+
+            bool left = false;
+            bool right = false;
+            Vector2 oldV = transform.position;
+            if (DefaultActions.LeftTest())
             {
-                Vector2 ov = transform.position;
-                needle.SetActive(false);
-                rig.rotation = Vector2.Angle(transform.position, needle.transform.position);
-                rig.velocity = needle.transform.position - transform.position;
-                
-                for (int i = 0; i < 5; i++)
-                {
-                    foreach (var v in Physics2D.LinecastAll(ov, transform.position, Physics2D.AllLayers))
-                    {
-                        HitEnemy(v.collider.gameObject);
-                    }
-                    if (rig.velocity == Vector2.zero || (
-                        ((transform.position.x >= needle.transform.position.x - 0.5f) ||
-                        (transform.position.x <= needle.transform.position.x +0.5f))
-                        &&
-                        ((transform.position.y >= needle.transform.position.y - 0.5f) ||
-                        (transform.position.y <= needle.transform.position.y + 0.5f))
-                        )
-                        ) break;
-                    ov = transform.position;
-                    rig.velocity = needle.transform.position - transform.position;
-                    yield return new WaitForSeconds(0.1f);
-                }
-                animator.Play("Idle");
+                HeroController.instance.FaceLeft();
+                rig.SetVX(-speed);
+                left = true;
+            }
+            else if (DefaultActions.RightTest())
+            {
+                HeroController.instance.FaceRight();
+                rig.SetVX(speed);
+                right = true;
             }
             else
             {
-                bool left = false;
-                bool right = false;
-                Vector2 oldV = transform.position;
-                if (DefaultActions.LeftTest())
+                rig.SetVX(HeroController.instance.cState.facingRight ?
+                     speed :
+                    -speed);
+            }
+            if (DefaultActions.DownTest())
+            {
+                rig.SetVY(-50);
+                if (left)
                 {
-                    HeroController.instance.FaceLeft();
-                    rig.SetVX(-speed);
-                    left = true;
+                    rig.rotation = 45;
                 }
-                else if (DefaultActions.RightTest())
+                else if (right)
                 {
-                    HeroController.instance.FaceRight();
-                    rig.SetVX(speed);
-                    right = true;
+                    rig.rotation = -45;
                 }
                 else
                 {
-                    rig.SetVX(HeroController.instance.cState.facingRight ?
-                         speed :
-                        -speed);
-                }
-                if (DefaultActions.DownTest())
-                {
-                    rig.SetVY(-50);
-                    if (left)
+                    if (HeroController.instance.cState.facingRight)
                     {
-                        rig.rotation = 45;
-                    }
-                    else if (right)
-                    {
-                        rig.rotation = -45;
+                        rig.rotation = -90;
                     }
                     else
                     {
-                        if (HeroController.instance.cState.facingRight)
-                        {
-                            rig.rotation = -90;
-                        }
-                        else
-                        {
-                            rig.rotation = 90;
-                        }
+                        rig.rotation = 90;
                     }
                 }
-                for (int i = 0; i < 5; i++)
-                {
-                    yield return new WaitForSeconds(0.1f);
-                    
-                    foreach (var v in Physics2D.LinecastAll(oldV, transform.position, Physics2D.AllLayers))
-                    {
-                        HitEnemy(v.collider.gameObject);
-                    }
-                    oldV = transform.position;
-                }
-                rig.SetVX(0);
-                if (rig.velocity.y > -0.1f)
-                {
-                    rig.SetVY(0);
-                    yield return animator.PlayAnimWait("G Dash Recover1");
-                    yield return animator.PlayAnimWait("G Dash Recover2");
-                    animator.Play("Idle");
-                }
-                rig.SetVY(0);
             }
+            yield return new WaitForSeconds(0.5f);
+            rig.SetVX(0);
+            if (rig.velocity.y > -0.1f)
+            {
+                rig.SetVY(0);
+                yield return animator.PlayAnimWait("G Dash Recover1");
+                yield return animator.PlayAnimWait("G Dash Recover2");
+                animator.Play("Idle");
+            }
+            rig.SetVY(0);
+
             rig.rotation = 0;
             rig.gravityScale = 1;
             On.HeroController.TakeDamage -= _NoDamage;
@@ -478,10 +449,6 @@ namespace Hornet
             if (DefaultActions.UpTest())
             {
                 needle.GetComponent<Rigidbody2D>().SetVY(38);
-            }
-            else if (DefaultActions.DownTest())
-            {
-                needle.GetComponent<Rigidbody2D>().SetVY(-38);
             }
             else
             {

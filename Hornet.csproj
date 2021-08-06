@@ -66,6 +66,7 @@
     </Reference>
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="HeroBox.cs" />
     <Compile Include="HornetMod.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
     <Compile Include="ControlScript.cs" />
